@@ -1,0 +1,58 @@
+name: CI/CD Pipeline - Production
+
+# Actions only gets triggered when there is a new release published
+# or manual trigger on the workflow.
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+
+jobs:
+  Test:
+    runs-on: ubuntu-latest
+    steps:
+      # Retrieve source code from main branch
+      - name: Checkout source code
+        uses: actions/checkout@v2
+      # Setup project environement
+      - name: Prepare .env for tests
+        run: echo ${{ secrets.WEBSITE_PROD_ENV }} | base64 -d >> .env.local
+      - name: Use Node.js v14
+        uses: actions/setup-node@v2
+        with:
+          node-version: "14"
+          cache: "yarn"
+      # (TODO) End-to-end tests and unit tests
+      - name: Run test
+        run: |
+          yarn
+          yarn build
+          yarn test --coverage
+      # Upload code coverage report
+      - uses: codecov/codecov-action@v2
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage/coverage-final.json
+          flags: unittests
+          verbose: true
+
+  Deployment:
+    runs-on: ubuntu-latest
+    environment:
+      name: Production
+      url: https://demo.your-domain.com
+    needs: [Test]
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v1
+        with:
+          node-version: "14"
+          registry-url: https://registry.npmjs.org/
+
+      - name: Deploy to Vercel
+        run: npx vercel --token ${VERCEL_TOKEN} --prod
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
